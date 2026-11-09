@@ -1120,3 +1120,26 @@ pairing approval was performed.
 ## Pairing sign-in placement (2026-11-08)
 
 DSH-Go pairing lives in the local settings Sign in tab list, alongside existing OAuth/password methods, rather than above general settings. Authorized Hosts retain a pairing shortcut. Provider-loading failures do not reset a manually selected pairing tab; switching/closing the panel does not cancel the Server session or reopen its single attempt.
+
+## Legacy storage metadata tolerance and sign-in resilience (2026-11-10)
+
+Desktop migration from the legacy `remote` storage root to `ds-harness-remote` no
+longer rejects a directory because the operating system dropped an index or
+metadata file into it. `.DS_Store`, `desktop.ini`, `Thumbs.db`, `.Spotlight-V100`,
+`.Trashes`, `.fseventsd` and AppleDouble `._*` names are skipped at every level of
+the ownership check (root, `servers/`, per-scope and per-identity directories) and
+while asserting the tree is idle. The set stays closed: any other unexpected
+entry still fails ownership verification, and no file is created, repaired or
+moved by the check.
+
+Optional OAuth discovery no longer blocks password sign-in. When provider
+discovery fails while the user is on the password or device-pairing method, the
+sign-in view falls back to password login without publishing a blocking error
+banner; the failure is reported only when the user explicitly selected an OAuth
+method. Provider discovery keeps a 20 s deadline so a slow or cold remote
+Server does not trip the shorter default budget.
+
+Validation: 75 plugin test files / 576 tests, plugin typecheck, production bundle
+build. The storage fix was reproduced with OS metadata in the root, `servers/`,
+per-scope and per-identity directories; the sign-in fix was reproduced with a
+failing provider probe.

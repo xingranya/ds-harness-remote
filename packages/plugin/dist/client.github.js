@@ -3017,7 +3017,7 @@ If a code was sent, recover the original submission without changing it.`,
             return preferred === void 0 ? "password" : `oauth:${preferred.id}`;
           });
         }).catch((reason) => {
-          !active || run !== providerRequestRun.current || (setProvidersFailed(!0), setPairingAvailable(!1), setLoginMethod("password"), selectedLoginMethod.current !== "device_pairing" && setError(messageOf(reason, t)));
+          !active || run !== providerRequestRun.current || (setProvidersFailed(!0), setPairingAvailable(!1), setLoginMethod("password"), loginMethodManuallySelected.current && selectedLoginMethod.current.startsWith("oauth:") && setError(messageOf(reason, t)));
         }).finally(() => {
           active && run === providerRequestRun.current && setProvidersLoading(!1);
         }), () => {
@@ -4106,7 +4106,7 @@ If a code was sent, recover the original submission without changing it.`,
             return preferred === void 0 ? "password" : `oauth:${preferred.id}`;
           });
         }).catch((reason) => {
-          !active || run !== providerRequestRun.current || (setProvidersFailed(!0), setPairingAvailable(!1), setLoginMethod("password"), setError(messageOf(reason, t)));
+          !active || run !== providerRequestRun.current || (setProvidersFailed(!0), setPairingAvailable(!1), setLoginMethod("password"), loginMethodManuallySelected.current && loginMethod.startsWith("oauth:") && setError(messageOf(reason, t)));
         }).finally(() => {
           active && run === providerRequestRun.current && setProvidersLoading(!1);
         }), () => {

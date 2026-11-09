@@ -46,7 +46,7 @@ describe('HostServerApi', () => {
           retryable: scenario.timeout,
         })
         await ready
-        if (scenario.timeout) await vi.advanceTimersByTimeAsync(10_000)
+        if (scenario.timeout) await vi.advanceTimersByTimeAsync(20_000)
         else api.close()
         await rejected
         expect(requestSignal?.aborted).toBe(true)

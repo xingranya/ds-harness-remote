@@ -320,7 +320,11 @@ export function createRemoteWorkspaceAction(React: ClientReact, portal?: PortalR
         setProvidersFailed(true)
         setPairingAvailable(false)
         setLoginMethod('password')
-        setError(messageOf(reason, t))
+        // OAuth discovery is optional. When it fails we fall back to password
+        // login, so only surface the failure when the user explicitly picked an
+        // OAuth method. Otherwise a background probe error would block the
+        // password form with a misleading "service unavailable" message.
+        if (loginMethodManuallySelected.current && loginMethod.startsWith('oauth:')) setError(messageOf(reason, t))
       }).finally(() => {
         if (active && run === providerRequestRun.current) setProvidersLoading(false)
       })

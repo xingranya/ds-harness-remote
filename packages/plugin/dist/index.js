@@ -84216,7 +84216,7 @@ var HostServerApi = class {
   async oauthProviders() {
     let body;
     try {
-      body = await this.publicRequest("/api/v1/auth/oauth/providers", { method: "GET" });
+      body = await this.publicRequest("/api/v1/auth/oauth/providers", { method: "GET" }, void 0, 2e4);
     } catch (error62) {
       if (!(error62 instanceof ServerApiError) || error62.status !== 404) throw error62;
       const legacy = [
@@ -84516,9 +84516,9 @@ var HostServerApi = class {
       return this.publicRequest(path, init, next.accessToken);
     }
   }
-  async publicRequest(path, init, accessToken) {
+  async publicRequest(path, init, accessToken, timeoutMs = 1e4) {
     const controller = new AbortController();
-    const timer2 = setTimeout(() => controller.abort(), 1e4);
+    const timer2 = setTimeout(() => controller.abort(), timeoutMs);
     const signal = AbortSignal.any([
       this.lifetime.signal,
       controller.signal,
@@ -87554,6 +87554,17 @@ async function resetDefaultIdentityRoles(roles, serverUrl, deviceName, options =
     return prepareDefaultIdentityDirectory(options);
   }
 }
+var IGNORED_STORAGE_ARTIFACTS = /* @__PURE__ */ new Set([
+  ".DS_Store",
+  "desktop.ini",
+  "Thumbs.db",
+  ".Spotlight-V100",
+  ".Trashes",
+  ".fseventsd"
+]);
+function isIgnoredStorageArtifact(name2) {
+  return IGNORED_STORAGE_ARTIFACTS.has(name2) || name2.startsWith("._");
+}
 async function assertOwnedRemoteStorage(root2) {
   let failureCode = "STORAGE_CONFLICT";
   const rejected = (code = failureCode) => new IdentityInvalidError(
@@ -87570,7 +87581,7 @@ async function assertOwnedRemoteStorage(root2) {
   ]);
   let identities = 0;
   const checkIdentity = async (directory, scope2, role2) => {
-    const entries = (await readdir(directory, { withFileTypes: true })).filter((entry) => !(directory === root2 && entry.name === "servers" && entry.isDirectory()));
+    const entries = (await readdir(directory, { withFileTypes: true })).filter((entry) => !isIgnoredStorageArtifact(entry.name) && !(directory === root2 && entry.name === "servers" && entry.isDirectory()));
     for (const entry of entries) {
       const allowedFile = identityFiles.has(entry.name) || isPeerTempArtifact(entry.name) || role2 === "client" && isIdentityTempArtifact(entry.name);
       if (!entry.isFile() || !allowedFile) throw rejected("STORAGE_CONFLICT");
@@ -87635,7 +87646,7 @@ async function assertOwnedRemoteStorage(root2) {
     identities++;
   };
   try {
-    const entries = await readdir(root2, { withFileTypes: true });
+    const entries = (await readdir(root2, { withFileTypes: true })).filter((entry) => !isIgnoredStorageArtifact(entry.name));
     const flat = entries.filter((entry) => entry.name !== "servers");
     if (flat.length > 0) {
       if (flat.some((entry) => !entry.isFile() || !identityFiles.has(entry.name) && !isPeerTempArtifact(entry.name))) throw rejected("STORAGE_CONFLICT");
@@ -87644,9 +87655,11 @@ async function assertOwnedRemoteStorage(root2) {
     const servers = entries.find((entry) => entry.name === "servers");
     if (servers !== void 0) {
       if (!servers.isDirectory()) throw rejected("STORAGE_CONFLICT");
-      for (const scope2 of await readdir(join5(root2, "servers"), { withFileTypes: true })) {
+      const scopes = (await readdir(join5(root2, "servers"), { withFileTypes: true })).filter((entry) => !isIgnoredStorageArtifact(entry.name));
+      for (const scope2 of scopes) {
         if (!scope2.isDirectory() || !/^[a-f0-9]{24}$/.test(scope2.name)) throw rejected("STORAGE_CONFLICT");
-        for (const role2 of await readdir(join5(root2, "servers", scope2.name), { withFileTypes: true })) {
+        const roles = (await readdir(join5(root2, "servers", scope2.name), { withFileTypes: true })).filter((entry) => !isIgnoredStorageArtifact(entry.name));
+        for (const role2 of roles) {
           if (!role2.isDirectory() || role2.name !== "host" && role2.name !== "client") throw rejected("STORAGE_CONFLICT");
           await checkIdentity(join5(root2, "servers", scope2.name, role2.name), scope2.name, role2.name);
         }
@@ -87691,6 +87704,7 @@ async function storageDirectoryStat(path) {
 }
 async function assertStorageIdle(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (isIgnoredStorageArtifact(entry.name)) continue;
     if (entry.isSymbolicLink() || entry.name === LOCK_FILE_NAME || entry.name.includes(".refresh-lock") || entry.name.startsWith(`${LOCK_FILE_NAME}.takeover-`)) {
       throw new IdentityInvalidError(
         "Remote storage contains a lock or symbolic link; stop all Harness instances and inspect it before migration.",

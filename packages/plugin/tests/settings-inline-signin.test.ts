@@ -696,4 +696,57 @@ describe('RemotePluginOptions inline sign-in suite', () => {
 
     unmount()
   })
+
+  it('keeps password sign-in usable and free of blocking errors when OAuth discovery fails', async () => {
+    const { React, resetRender, unmount } = createTestHarness()
+    const controlSpy = vi.fn(async (endpoint: string) => {
+      if (endpoint === 'settings.get') {
+        return {
+          config: { serverUrl: 'https://dsh.r2049.cn' },
+          deviceName: 'test-device',
+          writable: true,
+          applies: 'restart',
+          associations: {},
+        } as PluginSettingsView
+      }
+      if (endpoint === 'status') {
+        return { mode: 'local', available: false, hostAuthorizationAvailable: true }
+      }
+      if (endpoint === 'client.account.providers') {
+        throw new Error('服务暂不可用，请稍后重试。')
+      }
+      return {}
+    })
+
+    const statusFeed = { subscribe: vi.fn(() => () => {}), close: vi.fn(), getSnapshot: () => undefined } as any
+    const Component = createRemotePluginOptions(React) as any
+    const render = () => {
+      resetRender()
+      return Component({
+        control: controlSpy,
+        statusFeed,
+        preferredQrProvider: 'zhihu',
+        t: (k: string) => k,
+        view: 'page',
+      })
+    }
+
+    render()
+    await new Promise(r => setTimeout(r, 10))
+    let tree = render()
+
+    findElement(tree, (n: any) => n.props?.['aria-controls'] === 'dsh-remote-inline-signin').props.onClick()
+    await new Promise(r => setTimeout(r, 10))
+    tree = render()
+
+    // Password login stays available even though discovery failed.
+    expect(findElement(tree, (n: any) => n.props?.type === 'password')).not.toBeNull()
+
+    // The optional discovery failure must not surface a blocking error banner.
+    const errorBanner = findElement(tree, (n: any) => typeof n.props?.className === 'string'
+      && n.props.className.includes('dshRemoteSignInIssue'))
+    expect(errorBanner).toBeNull()
+
+    unmount()
+  })
 })

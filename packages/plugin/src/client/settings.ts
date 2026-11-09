@@ -205,7 +205,13 @@ export function createRemotePluginOptions(React: ClientReact) {
         setProvidersFailed(true)
         setPairingAvailable(false)
         setLoginMethod('password')
-        if (selectedLoginMethod.current !== 'device_pairing') setError(messageOf(reason, t))
+        // OAuth discovery is optional. When it fails we fall back to password
+        // login, so only surface the failure when the user explicitly picked an
+        // OAuth method. Otherwise a background probe error would block the
+        // password form with a misleading "service unavailable" message.
+        if (loginMethodManuallySelected.current && selectedLoginMethod.current.startsWith('oauth:')) {
+          setError(messageOf(reason, t))
+        }
       }).finally(() => {
         if (active && run === providerRequestRun.current) setProvidersLoading(false)
       })

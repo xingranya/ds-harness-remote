@@ -197,7 +197,7 @@ export class HostServerApi {
   async oauthProviders(): Promise<OAuthProviderInfo[]> {
     let body: unknown
     try {
-      body = await this.publicRequest<unknown>('/api/v1/auth/oauth/providers', { method: 'GET' })
+      body = await this.publicRequest<unknown>('/api/v1/auth/oauth/providers', { method: 'GET' }, undefined, 20_000)
     } catch (error) {
       if (!(error instanceof ServerApiError) || error.status !== 404) throw error
       // Older servers expose only individual status endpoints. Do not hide
@@ -561,9 +561,9 @@ export class HostServerApi {
     }
   }
 
-  private async publicRequest<TResult>(path: string, init: RequestInit, accessToken?: string): Promise<TResult> {
+  private async publicRequest<TResult>(path: string, init: RequestInit, accessToken?: string, timeoutMs = 10_000): Promise<TResult> {
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 10_000)
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
     const signal = AbortSignal.any([
       this.lifetime.signal,
       controller.signal,

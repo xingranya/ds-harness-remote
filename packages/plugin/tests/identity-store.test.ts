@@ -475,6 +475,35 @@ describe('IdentityStore', () => {
       }
     }
   })
+
+  it('safely ignores OS metadata files like .DS_Store or desktop.ini across legacy migration', async () => {
+    const home = await temporaryDirectory()
+    const legacyRoot = join(home, 'remote')
+    const serverUrl = 'https://dsh.r2049.cn'
+    const legacyHostDir = serverStorageDirectory(legacyRoot, serverUrl, 'host')
+    const legacyClientDir = serverStorageDirectory(legacyRoot, serverUrl, 'client')
+
+    const hostIdentity = await new IdentityStore({ directory: legacyHostDir, role: 'host' }).loadOrCreate('Host')
+    const clientIdentity = await new IdentityStore({ directory: legacyClientDir, role: 'client' }).loadOrCreate('Client')
+
+    // Inject OS metadata files in root, servers, scope, and identity leaf directories
+    await writeFile(join(legacyRoot, '.DS_Store'), 'macOS root index')
+    await writeFile(join(legacyRoot, 'desktop.ini'), '[LocalizedFileNames]')
+    await writeFile(join(legacyRoot, 'servers', '.DS_Store'), 'macOS servers index')
+    const scopeDir = join(legacyRoot, 'servers', (await readdir(join(legacyRoot, 'servers'))).find(n => !n.startsWith('.'))!)
+    await writeFile(join(scopeDir, 'Thumbs.db'), 'Windows thumbnails')
+    await writeFile(join(legacyHostDir, '.DS_Store'), 'macOS leaf index')
+    await writeFile(join(legacyClientDir, '._device.json'), 'AppleDouble metadata')
+
+    // Migration must succeed without throwing STORAGE_CONFLICT
+    const migratedRoot = await prepareDefaultIdentityDirectory({ env: { DSH_HOME: home } })
+    expect(migratedRoot).toBe(join(home, 'ds-harness-remote'))
+
+    const migratedHostDir = serverStorageDirectory(migratedRoot, serverUrl, 'host')
+    const migratedClientDir = serverStorageDirectory(migratedRoot, serverUrl, 'client')
+    expect(await new IdentityStore({ directory: migratedHostDir, role: 'host' }).loadOrCreate('Host')).toEqual(hostIdentity)
+    expect(await new IdentityStore({ directory: migratedClientDir, role: 'client' }).loadOrCreate('Client')).toEqual(clientIdentity)
+  })
 })
 
 async function temporaryDirectory(): Promise<string> {
