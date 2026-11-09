@@ -300,7 +300,6 @@ export function createRemoteWorkspaceAction(React: ClientReact, portal?: PortalR
       setQrImage(undefined)
       setQrExpired(false)
       setOAuthProviders([])
-      setPairingAvailable(false)
       setProvidersLoading(true)
       setProvidersFailed(false)
       void props.control<OAuthProviderInfo[]>('client.account.providers').then(items => {
@@ -315,12 +314,10 @@ export function createRemoteWorkspaceAction(React: ClientReact, portal?: PortalR
           const preferred = available.find(item => item.id === props.preferredQrProvider) ?? available[0]
           return preferred === undefined ? 'password' : `oauth:${preferred.id}`
         })
-      }).catch(reason => {
+      }).catch(() => {
         if (!active || run !== providerRequestRun.current) return
         setProvidersFailed(true)
-        setPairingAvailable(false)
-        setLoginMethod('password')
-        setError(messageOf(reason, t))
+        setLoginMethod(current => loginMethodManuallySelected.current && current === 'device_pairing' ? current : 'password')
       }).finally(() => {
         if (active && run === providerRequestRun.current) setProvidersLoading(false)
       })
@@ -407,7 +404,7 @@ export function createRemoteWorkspaceAction(React: ClientReact, portal?: PortalR
     const selectedProvider = oauthProviders.find(item => `oauth:${item.id}` === loginMethod)
     const scanLabel = t('scanWithProvider', { provider: selectedProvider?.displayName ?? '' })
     const passwordVisible = !savingServer && !serverDirty && loginMethod === 'password' && (
-      loginMethodManuallySelected.current || (!providersLoading && !providersFailed && oauthProviders.length === 0)
+      loginMethodManuallySelected.current || (!providersLoading && oauthProviders.length === 0)
     )
 
     const qrLoginTab = (provider: OAuthProviderInfo): unknown => React.createElement('button', {
@@ -850,6 +847,7 @@ export function createRemoteWorkspaceAction(React: ClientReact, portal?: PortalR
       setQrImage(undefined)
       setQrExpired(false)
       setOAuthProviders([])
+      setPairingAvailable(false)
       setProvidersFailed(false)
       setProvidersLoading(false)
       setLoginMethod('password')
@@ -1306,6 +1304,11 @@ export function createRemoteWorkspaceAction(React: ClientReact, portal?: PortalR
                 }, t('accountPasswordLogin'))),
               React.createElement('div', { className: 'dshRemoteLoginContent' },
               providersLoading && loginMethod !== 'device_pairing' ? React.createElement('p', { role: 'status' }, t('loadingLoginProviders')) : null,
+              providersFailed ? React.createElement('p', { role: 'status' },
+                t('noLoginProviders'), ' ', React.createElement('button', {
+                  type: 'button', disabled: busy || savingServer || serverDirty,
+                  onClick: () => setProviderReload(value => value + 1),
+                }, t('retryLoginProviders'))) : null,
               !savingServer && !serverDirty && !providersLoading && !providersFailed && oauthProviders.length === 0 && loginMethod !== 'device_pairing'
                 ? React.createElement('p', { role: 'status' }, t('noLoginProviders')) : null,
               loginMethod === 'device_pairing' && pairingAvailable && status?.hostAuthorizationAvailable
