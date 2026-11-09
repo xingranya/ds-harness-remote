@@ -95,7 +95,7 @@ export function createRemotePluginOptions(React: ClientReact) {
     const [oauthProviders, setOAuthProviders] = React.useState<OAuthProviderInfo[]>([])
     const [providersLoading, setProvidersLoading] = React.useState(false)
     const [providersFailed, setProvidersFailed] = React.useState(false)
-    const [pairingAvailable, setPairingAvailable] = React.useState(false)
+    const [pairingServerUrl, setPairingServerUrl] = React.useState<string | undefined>(undefined)
     const [qrSession, setQrSession] = React.useState<OAuthQrSession | undefined>(undefined)
     const [qrImage, setQrImage] = React.useState<string | undefined>(undefined)
     const [qrExpired, setQrExpired] = React.useState(false)
@@ -112,7 +112,12 @@ export function createRemotePluginOptions(React: ClientReact) {
     const association = associations.client ?? associations.host
     React.useEffect(() => { if (association !== undefined) setSignInOpen(false) }, [association])
     const savedServerUrl = settingsView?.config.serverUrl
+    const pairingAvailable = pairingServerUrl !== undefined && pairingServerUrl === savedServerUrl
     const serverDirty = savedServerUrl === undefined || serverUrl.trim() !== savedServerUrl
+    React.useEffect(() => {
+      setPairingServerUrl(undefined)
+      setLoginMethod(current => current === 'device_pairing' ? 'password' : current)
+    }, [savedServerUrl])
 
     const applyAssociations = (view: PluginSettingsView): void => {
       setAssociations(view.associations ?? (view.association === undefined ? {} : { host: view.association }))
@@ -188,7 +193,7 @@ export function createRemotePluginOptions(React: ClientReact) {
       void props.control<OAuthProviderInfo[]>('client.account.providers').then(items => {
         if (!active || run !== providerRequestRun.current) return
         const pairingSupported = items.some(item => item.devicePairing === true)
-        setPairingAvailable(pairingSupported)
+        setPairingServerUrl(pairingSupported ? savedServerUrl : undefined)
         const available = items.filter(item => item.qrStartUrl != null)
         setOAuthProviders(available)
         setLoginMethod(current => {
@@ -324,8 +329,6 @@ export function createRemotePluginOptions(React: ClientReact) {
       setQrBusy(false)
       try {
         const view = await props.control<PluginSettingsView>('settings.server.set', { serverUrl: nextServerUrl })
-        setPairingAvailable(false)
-        setLoginMethod(current => current === 'device_pairing' ? 'password' : current)
         serverDraftEdited.current = false
         setEditingServer(false)
         applyView(view)

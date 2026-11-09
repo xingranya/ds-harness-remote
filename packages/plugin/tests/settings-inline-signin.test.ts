@@ -106,17 +106,19 @@ describe.each(['settings', 'workspace'] as const)('%s provider fallback', entran
     vi.stubGlobal('document', { documentElement: { classList: { toggle: vi.fn(), remove: vi.fn() } } })
     let submitError: Error | undefined = new Error('password rejected by server')
     let signedIn = false
-    const settings = { config: { serverUrl: 'https://dsh.r2049.cn' }, writable: true, associations: {} }
+    let settings = { config: { serverUrl: 'https://dsh.r2049.cn' }, writable: true, associations: {} }
+    const listeners = new Set<(status: any) => void>()
+    const status = () => ({
+      mode: 'local', available: true, serverUrl: settings.config.serverUrl,
+      hostAuthorizationAvailable: true, clientAuthRequired: !signedIn,
+    })
     const control = vi.fn(async (endpoint: string, payload?: any) => {
       if (endpoint === 'settings.get') return settings
       if (endpoint === 'settings.server.set') {
-        settings.config.serverUrl = payload.serverUrl
+        settings = { ...settings, config: { serverUrl: payload.serverUrl } }
         return { ...settings, applies: 'live' }
       }
-      if (endpoint === 'status') return {
-        mode: 'local', available: true, serverUrl: settings.config.serverUrl,
-        hostAuthorizationAvailable: true, clientAuthRequired: !signedIn,
-      }
+      if (endpoint === 'status') return status()
       if (endpoint === 'client.account.providers') return providers()
       if (endpoint === 'client.account.qr.start') return new Promise(() => {})
       if (endpoint === 'devices') return []
@@ -128,7 +130,10 @@ describe.each(['settings', 'workspace'] as const)('%s provider fallback', entran
       return {}
     })
     const props = {
-      control, statusFeed: { subscribe: () => () => {}, getSnapshot: () => undefined },
+      control, statusFeed: {
+        subscribe: (listener: (next: any) => void) => { listeners.add(listener); return () => { listeners.delete(listener) } },
+        getSnapshot: () => undefined,
+      },
       t: (key: string) => key, view: 'page', wide: true, preferredQrProvider: 'zhihu',
       subscribeOpen: () => () => {},
       sidebarEntry: { read: () => 'standard', subscribe: () => () => {}, publish: () => {} },
@@ -144,7 +149,13 @@ describe.each(['settings', 'workspace'] as const)('%s provider fallback', entran
     render()
     await settle()
     tree = await settle()
-    return { render, settle, tree, props, control, allowSubmit: () => { submitError = undefined } }
+    return {
+      render, settle, tree, props, control, allowSubmit: () => { submitError = undefined },
+      pushServer: (serverUrl: string) => {
+        settings = { ...settings, config: { serverUrl } }
+        listeners.forEach(listener => listener(status()))
+      },
+    }
   }
 
   it('shows password after discovery settles and preserves real submit failure before success', async () => {
@@ -190,6 +201,25 @@ describe.each(['settings', 'workspace'] as const)('%s provider fallback', entran
     await login.settle()
     tree = await login.settle()
     expect(providers).toHaveBeenCalledTimes(2)
+    expect(findElement(tree, (node: any) => node.props?.role === 'tab' && node.children.includes('pairingLoginTab'))).toBeNull()
+    expect(findElement(tree, (node: any) => node.props?.role === 'tabpanel' && node.props?.id?.endsWith('password-panel'))).toBeTruthy()
+  })
+
+  it('unmounts pairing when another window changes server before discovery settles', async () => {
+    let rejectDiscovery!: (reason: Error) => void
+    const providers = vi.fn().mockResolvedValueOnce([{ id: 'zhihu', devicePairing: true }])
+      .mockImplementation(() => new Promise((_, reject) => { rejectDiscovery = reject }))
+    const login = await openLogin(providers)
+    findElement(login.tree, (node: any) => node.props?.role === 'tab' && node.children.includes('pairingLoginTab')).props.onClick()
+    let tree = login.render()
+    expect(findElement(tree, (node: any) => node.props?.role === 'tabpanel' && node.props?.id?.endsWith('pairing-panel'))).toBeTruthy()
+    login.pushServer('https://other.example.com')
+    tree = await login.settle()
+    expect(findElement(tree, (node: any) => node.props?.role === 'tabpanel' && node.props?.id?.endsWith('pairing-panel'))).toBeNull()
+    tree = await login.settle()
+    expect(providers).toHaveBeenCalledTimes(2)
+    rejectDiscovery(new Error('new server provider network failed'))
+    tree = await login.settle()
     expect(findElement(tree, (node: any) => node.props?.role === 'tab' && node.children.includes('pairingLoginTab'))).toBeNull()
     expect(findElement(tree, (node: any) => node.props?.role === 'tabpanel' && node.props?.id?.endsWith('password-panel'))).toBeTruthy()
   })
@@ -828,56 +858,4 @@ describe('RemotePluginOptions inline sign-in suite', () => {
     unmount()
   })
 
-  it('keeps password sign-in usable and free of blocking errors when OAuth discovery fails', async () => {
-    const { React, resetRender, unmount } = createTestHarness()
-    const controlSpy = vi.fn(async (endpoint: string) => {
-      if (endpoint === 'settings.get') {
-        return {
-          config: { serverUrl: 'https://dsh.r2049.cn' },
-          deviceName: 'test-device',
-          writable: true,
-          applies: 'restart',
-          associations: {},
-        } as PluginSettingsView
-      }
-      if (endpoint === 'status') {
-        return { mode: 'local', available: false, hostAuthorizationAvailable: true }
-      }
-      if (endpoint === 'client.account.providers') {
-        throw new Error('服务暂不可用，请稍后重试。')
-      }
-      return {}
-    })
-
-    const statusFeed = { subscribe: vi.fn(() => () => {}), close: vi.fn(), getSnapshot: () => undefined } as any
-    const Component = createRemotePluginOptions(React) as any
-    const render = () => {
-      resetRender()
-      return Component({
-        control: controlSpy,
-        statusFeed,
-        preferredQrProvider: 'zhihu',
-        t: (k: string) => k,
-        view: 'page',
-      })
-    }
-
-    render()
-    await new Promise(r => setTimeout(r, 10))
-    let tree = render()
-
-    findElement(tree, (n: any) => n.props?.['aria-controls'] === 'dsh-remote-inline-signin').props.onClick()
-    await new Promise(r => setTimeout(r, 10))
-    tree = render()
-
-    // Password login stays available even though discovery failed.
-    expect(findElement(tree, (n: any) => n.props?.type === 'password')).not.toBeNull()
-
-    // The optional discovery failure must not surface a blocking error banner.
-    const errorBanner = findElement(tree, (n: any) => typeof n.props?.className === 'string'
-      && n.props.className.includes('dshRemoteSignInIssue'))
-    expect(errorBanner).toBeNull()
-
-    unmount()
-  })
 })

@@ -176,7 +176,8 @@ export function createRemoteWorkspaceAction(React: ClientReact, portal?: PortalR
     const [oauthProviders, setOAuthProviders] = React.useState<OAuthProviderInfo[]>([])
     const [providersLoading, setProvidersLoading] = React.useState(false)
     const [providersFailed, setProvidersFailed] = React.useState(false)
-    const [pairingAvailable, setPairingAvailable] = React.useState(false)
+    const [pairingServerUrl, setPairingServerUrl] = React.useState<string | undefined>(undefined)
+    const pairingAvailable = pairingServerUrl !== undefined && pairingServerUrl === status?.serverUrl
     const [providerReload, setProviderReload] = React.useState(0)
     const providerRequestRun = React.useRef(0)
     const [qrSession, setQrSession] = React.useState<OAuthQrSession | undefined>(undefined)
@@ -258,6 +259,8 @@ export function createRemoteWorkspaceAction(React: ClientReact, portal?: PortalR
       if (status?.serverUrl !== undefined) {
         setLoginServerUrl(status.serverUrl)
       }
+      setPairingServerUrl(undefined)
+      setLoginMethod(current => current === 'device_pairing' ? 'password' : current)
     }, [status?.serverUrl])
 
     React.useEffect(() => {
@@ -305,7 +308,7 @@ export function createRemoteWorkspaceAction(React: ClientReact, portal?: PortalR
       void props.control<OAuthProviderInfo[]>('client.account.providers').then(items => {
         if (!active || run !== providerRequestRun.current) return
         const pairingSupported = items.some(item => item.devicePairing === true)
-        setPairingAvailable(pairingSupported)
+        setPairingServerUrl(pairingSupported ? status?.serverUrl : undefined)
         const available = items.filter(item => item.qrStartUrl != null)
         setOAuthProviders(available)
         setLoginMethod(current => {
@@ -847,7 +850,7 @@ export function createRemoteWorkspaceAction(React: ClientReact, portal?: PortalR
       setQrImage(undefined)
       setQrExpired(false)
       setOAuthProviders([])
-      setPairingAvailable(false)
+      setPairingServerUrl(undefined)
       setProvidersFailed(false)
       setProvidersLoading(false)
       setLoginMethod('password')
