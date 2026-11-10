@@ -1,0 +1,33 @@
+name: Remote 修复跨平台回归
+on:
+  push:
+    branches:
+      - 'validation/remote-platform-*'
+permissions:
+  contents: read
+jobs:
+  regression:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm --filter @dsh-remote/protocol build
+      - run: pnpm --filter @dsh-remote/crypto build
+      - run: pnpm --filter @dsh-remote/webrtc build
+      - run: pnpm --filter @dsh-remote/client-core build
+      - run: pnpm --dir packages/plugin check
+      - name: 验证迁移安全边界、客户端自愈与登录回退
+        working-directory: packages/plugin
+        run: pnpm exec vitest run tests/identity-store.test.ts tests/settings-inline-signin.test.ts tests/server-api.test.ts tests/control-runtime.test.ts
